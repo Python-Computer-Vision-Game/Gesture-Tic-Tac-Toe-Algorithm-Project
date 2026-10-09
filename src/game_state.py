@@ -12,6 +12,7 @@ from enum import Enum, auto
 import cv2
 
 from . import config as cfg
+from .audio_manager import AudioManager
 from .board import Board
 from .config import t
 from .game_rules import RoundResult, evaluate, is_valid_move
@@ -155,8 +156,10 @@ ST = GameState
 class Game:
     """Everything except the physical camera, so tests can drive it with fake fingertips."""
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, audio=None):
         self.settings = settings or cfg.Settings()
+        self.audio = audio or AudioManager(self.settings)
+        self.last_hover = None
         self.engine = GameEngine(self.settings)
         self.mapper = CellMapper(Rect(cfg.BOARD_X, cfg.BOARD_Y, cfg.BOARD_SIZE, cfg.BOARD_SIZE))
         self.selector = SelectionManager()
@@ -216,6 +219,7 @@ class Game:
                      ("btn:zones", "Player zones: " + ("ON" if s.use_player_zones else "OFF")),
                      ("btn:first", f"First player: {names[s.first_player]}"),
                      ("btn:name0", name(0)), ("btn:name1", name(1)),
+                     ("btn:sound", "Sound: " + ("ON" if s.sound else "OFF")),
                      ("btn:debug", "Debug landmarks: " + ("ON" if s.debug_landmarks else "OFF"))]
             out = {bid: (Rect(190 + (i % 2) * 480, 150 + (i // 2) * 100, 420, 80), label)
                    for i, (bid, label) in enumerate(items)}
@@ -231,13 +235,22 @@ class Game:
             outcome = eng.play(row, col)
             if outcome == MoveOutcome.INVALID_CELL:              # FR-06: clear invalid-move message
                 self.say(t("taken"), now)
+                self.audio.play("invalid")
             elif outcome in (MoveOutcome.PLACED, MoveOutcome.WIN, MoveOutcome.DRAW):
                 self.cell_times[(row, col)] = now
                 self.selector.reset(lock=True)                   # finger must leave before re-triggering
                 self.toast = None
-                if outcome != MoveOutcome.PLACED:
+                if outcome == MoveOutcome.WIN:
                     self.result_time = now
+                    self.audio.play("win")
+                elif outcome == MoveOutcome.DRAW:
+                    self.result_time = now
+                    self.audio.play("draw")
+                else:
+                    self.audio.play("confirm")
             return
+
+        self.audio.play("confirm")                               # any button
 
         if target == "btn:start":
             if not self.mouse_mode and not self.camera_ok:
@@ -271,6 +284,9 @@ class Game:
             s.use_player_zones = not s.use_player_zones
         elif target == "btn:first":
             s.first_player = 1 - s.first_player
+        elif target == "btn:sound":
+            s.sound = not s.sound
+            self.audio.play("confirm")                           # silent if you just turned it off
         elif target == "btn:debug":
             s.debug_landmarks = not s.debug_landmarks
         elif target in ("btn:name0", "btn:name1"):
@@ -300,6 +316,13 @@ class Game:
         usable = p is not None and not p.ambiguous                   # ambiguous gesture = ignored
         self.sel = self.selector.update((p.x, p.y) if usable else None, targets, now,
                                         p.pinching if usable else False)
+        hover = self.sel.hover
+        if hover != self.last_hover:                              # soft tick when a free cell is targeted
+            if hover and hover.startswith("cell:") and eng.state == ST.PLAYING:
+                row, col = divmod(int(hover.split(":")[1]), 3)
+                if eng.board.is_empty(row, col):
+                    self.audio.play("target")
+            self.last_hover = hover
         if self.sel.selected and self.editing is None:
             self.activate(self.sel.selected, now)
 
@@ -398,14 +421,15 @@ def parse_args():
     p.add_argument("--camera", type=int, default=cfg.CAMERA_INDEX, help="camera index (default 0)")
     p.add_argument("--mouse", action="store_true", help="use the mouse instead of a camera")
     p.add_argument("--debug", action="store_true", help="show hand landmarks and FPS")
+    p.add_argument("--no-sound", action="store_true", help="turn sound effects off")
     return p.parse_args()
 
 
 def run(args):
     from .hand_tracker import Camera, HandTracker
 
-    settings = cfg.Settings(debug_landmarks=args.debug)
-    game = Game(settings)
+    settings = cfg.Settings(debug_landmarks=args.debug, sound=not args.no_sound)
+    game = Game(settings, AudioManager(settings, enabled=not args.no_sound))
     game.mouse_mode = args.mouse
     camera, tracker, detector, mouse = None, None, GestureDetector(settings), MouseInput()
 

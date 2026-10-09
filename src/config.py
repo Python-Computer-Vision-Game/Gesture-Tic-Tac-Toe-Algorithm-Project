@@ -47,6 +47,7 @@ class Settings:
     selection_mode: str = "dwell"    # "dwell" (Mode A) or "pinch" (Mode B)
     use_player_zones: bool = False   # left half of camera = P1, right half = P2
     debug_landmarks: bool = False
+    sound: bool = True
     keep_score_on_new_round: bool = True
 
 
