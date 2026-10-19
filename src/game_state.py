@@ -422,6 +422,7 @@ def parse_args():
     p.add_argument("--mouse", action="store_true", help="use the mouse instead of a camera")
     p.add_argument("--debug", action="store_true", help="show hand landmarks and FPS")
     p.add_argument("--no-sound", action="store_true", help="turn sound effects off")
+    p.add_argument("--sound-test", action="store_true", help="play every sound once and show what is wrong")
     return p.parse_args()
 
 
@@ -429,6 +430,10 @@ def run(args):
     from .hand_tracker import Camera, HandTracker
 
     settings = cfg.Settings(debug_landmarks=args.debug, sound=not args.no_sound)
+    if args.sound_test:
+        from .audio_manager import sound_test
+        sound_test(settings)
+        return
     game = Game(settings, AudioManager(settings, enabled=not args.no_sound))
     game.mouse_mode = args.mouse
     camera, tracker, detector, mouse = None, None, GestureDetector(settings), MouseInput()

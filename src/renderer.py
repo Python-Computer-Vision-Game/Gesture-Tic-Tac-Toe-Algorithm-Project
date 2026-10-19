@@ -105,6 +105,25 @@ def text(img, s, pos, scale=1.0, color=WHITE, thick=2, anchor="center"):
 
 
 # ---- Glow helpers ----------------------------------------------------------
+
+def rounded_rect(img, rect, radius, color, thickness=-1):
+    """Filled or outlined rounded rectangle (for cards, badges)."""
+    x, y, w, h = [int(v) for v in rect]
+    r = max(0, min(radius, w // 2, h // 2))
+    if thickness < 0:
+        cv2.rectangle(img, (x + r, y), (x + w - r, y + h), color, -1)
+        cv2.rectangle(img, (x, y + r), (x + w, y + h - r), color, -1)
+        for cx, cy in ((x + r, y + r), (x + w - r, y + r), (x + r, y + h - r), (x + w - r, y + h - r)):
+            cv2.circle(img, (cx, cy), r, color, -1, AA)
+        return
+    for p1, p2 in (((x + r, y), (x + w - r, y)), ((x + r, y + h), (x + w - r, y + h)),
+                   ((x, y + r), (x, y + h - r)), ((x + w, y + r), (x + w, y + h - r))):
+        cv2.line(img, p1, p2, color, thickness, AA)
+    for (cx, cy), a in (((x + r, y + r), 180), ((x + w - r, y + r), 270),
+                        ((x + w - r, y + h - r), 0), ((x + r, y + h - r), 90)):
+        cv2.ellipse(img, (cx, cy), (r, r), 0, a, a + 90, color, thickness, AA)
+
+
 def draw_glow_line(img, pt1, pt2, color, thickness=3, glow_r=16):
     overlay = np.zeros_like(img)
     cv2.line(overlay, pt1, pt2, color, thickness + glow_r, AA)
@@ -254,32 +273,41 @@ class Renderer:
             text(img, note, (W // 2, 700), 0.65, NEON_PINK, 1)
 
     def instructions(self, img):
-        sections = [
-            ("1. Pointing", [
-                "Raise one hand in front of the camera and point your index finger.",
-                "The cell under your fingertip lights up - that is your target.",
-            ]),
-            ("2. Confirming a move", [
-                "Hold your fingertip still: a ring fills up, then your symbol is placed.",
-                "(Pinch mode: touch thumb and index finger together instead.)",
-            ]),
-            ("3. Winning", [
-                "Make 3 of your symbols in a row: horizontal, vertical or diagonal.",
-                "All 9 cells full with no line = draw. Occupied cells cannot be used.",
-            ]),
-            ("4. Hand position", [
-                "Stand 50-80 cm from the camera in good light. Keep your hand in view.",
-                "Players take turns. With 'Player zones' on: Player 1 = left, Player 2 = right.",
-            ]),
+        """Lovable-style How to Play: yellow title + dark rounded tip cards."""
+        # Title (yellow like the reference)
+        YELLOW = (0, 220, 255)
+        CARD = (42, 32, 28)
+        CARD_EDGE = (70, 55, 48)
+
+        text(img, "HOW TO PLAY", (W // 2, 55), 1.55, YELLOW, 3)
+
+        tips = [
+            ("1", "Raise one hand so the camera can see it. Sit about an arm's length away in good light."),
+            ("2", "Point with your index finger. The square under your fingertip lights up."),
+            ("3", "Hold still. When the ring fills up, your X or O is placed."),
+            ("4", "Take turns. Player 1 is X, Player 2 is O."),
+            ("5", "Get three in a row - across, down or diagonal - to win the round."),
+            ("6", "No camera? You can also click a square with the mouse."),
         ]
-        draw_glow_rounded_rect(img, (110, 40, 1060, 560), 22, NEON_CYAN, thickness=3, glow_r=16)
-        text(img, "HOW TO PLAY", (W // 2, 85), 1.4, NEON_CYAN, 3)
-        y = 150
-        for heading, lines in sections:
-            text(img, heading, (150, y), 0.95, WHITE, 2, "left")
-            for i, line in enumerate(lines):
-                text(img, line, (170, y + 38 + i * 32), 0.68, GRAY, 1, "left")
-            y += 112
+
+        card_x, card_w = 160, 960
+        card_h = 72
+        gap = 12
+        start_y = 95
+
+        for i, (num, line) in enumerate(tips):
+            y = start_y + i * (card_h + gap)
+            # dark rounded card
+            rounded_rect(img, (card_x, y, card_w, card_h), 18, CARD, -1)
+            rounded_rect(img, (card_x, y, card_w, card_h), 18, CARD_EDGE, 2)
+            # number badge
+            cx, cy = card_x + 40, y + card_h // 2
+            cv2.circle(img, (cx, cy), 18, YELLOW, -1, AA)
+            text(img, num, (cx, cy), 0.7, (20, 20, 20), 2)
+            # tip text
+            text(img, line, (card_x + 75, y + card_h // 2), 0.62, WHITE, 1, "left")
+
+        # Back button is drawn by buttons() – style it via game_state label "Back"
 
     def settings_screen(self, img, editing):
         text(img, "SETTINGS", (W // 2, 80), 1.6, WHITE, 3)
