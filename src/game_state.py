@@ -40,7 +40,7 @@ ALLOWED = {
     S.SETTINGS: {S.MENU},
     S.CAMERA_ERROR: {S.MENU, S.SETUP},
     S.SETUP: {S.PLAYING, S.MENU, S.CAMERA_ERROR},
-    S.PLAYING: {S.PLAYING, S.CHECK_RESULT, S.MENU, S.CAMERA_ERROR},   # PLAYING->PLAYING = invalid move / restart
+    S.PLAYING: {S.PLAYING, S.CHECK_RESULT, S.MENU, S.CAMERA_ERROR},
     S.CHECK_RESULT: {S.ROUND_RESULT, S.PLAYING},
     S.ROUND_RESULT: {S.PLAYING, S.MENU},
 }
@@ -64,9 +64,9 @@ class StateMachine:
 
 
 class MoveOutcome(Enum):
-    REJECTED_STATE = auto()   # not in PLAYING
-    INVALID_CELL = auto()     # occupied or out of range
-    PLACED = auto()           # valid, game continues
+    REJECTED_STATE = auto()
+    INVALID_CELL = auto()
+    PLACED = auto()
     WIN = auto()
     DRAW = auto()
 
@@ -80,7 +80,6 @@ class GameEngine:
         self.fsm = StateMachine()
         self._clear_round()
 
-    # -- convenience ---------------------------------------------------------
     @property
     def state(self):
         return self.fsm.state
@@ -99,9 +98,7 @@ class GameEngine:
         self.winning_line = None
         self.last_move = None
 
-    # -- match / round control (FR-12) ---------------------------------------
     def begin_match(self):
-        """SETUP -> PLAYING with fresh scores."""
         self.sync_settings()
         self.scores.reset()
         self._clear_round()
@@ -117,7 +114,6 @@ class GameEngine:
     def reset_scores(self):
         self.scores.reset()
 
-    # -- the one game action -------------------------------------------------
     def play(self, row, col) -> MoveOutcome:
         if self.state != GameState.PLAYING:
             return MoveOutcome.REJECTED_STATE
@@ -142,20 +138,15 @@ class GameEngine:
             self.fsm.go(GameState.ROUND_RESULT)
             return MoveOutcome.DRAW
 
-        self.turns.switch()                  # only after a valid move (FR-11)
+        self.turns.switch()
         self.fsm.go(GameState.PLAYING)
         return MoveOutcome.PLACED
 
 
-# =====================================================================
-# Part 3: Game  (screens, buttons, input handling)
-# =====================================================================
 ST = GameState
 
 
 class Game:
-    """Everything except the physical camera, so tests can drive it with fake fingertips."""
-
     def __init__(self, settings=None, audio=None):
         self.settings = settings or cfg.Settings()
         self.audio = audio or AudioManager(self.settings)
@@ -166,15 +157,14 @@ class Game:
         self.renderer = Renderer(self.settings)
         self.running = True
         self.pointers, self.sel, self.active_pointer = [], None, None
-        self.toast = None                          # (text, colour, until)
+        self.toast = None
         self.cell_times, self.result_time = {}, 0.0
-        self.editing = None                        # 0/1 while typing a player name
+        self.editing = None
         self.camera_ok, self.mouse_mode, self.error_detail = True, False, ""
         self.setup_since, self.countdown_end = None, None
         self.setup_seen, self.setup_needed = 0, 1
-        self.retry_camera = False                  # set by key R on the error screen
+        self.retry_camera = False
 
-    # ---- helpers ---------------------------------------------------
     def say(self, msg, now):
         self.toast = (msg, ERROR_COLOR, now + cfg.TOAST_S)
 
@@ -186,20 +176,24 @@ class Game:
         if not self.pointers:
             return None
         if self.engine.state == ST.PLAYING and self.settings.use_player_zones:
-            idx = self.engine.turns.current_index          # only the active player's zone counts
+            idx = self.engine.turns.current_index
             return next((p for p in self.pointers if p.owner == idx), None)
         return self.pointers[0]
 
-    # ---- buttons for the current screen -----------------------------
     @staticmethod
     def _stack(items, x, y, w, h, gap):
-        return {bid: (Rect(x, y + i * (h + gap), w, h), label) for i, (bid, label) in enumerate(items)}
+        return {bid: (Rect(x, y + i * (h + gap), w, h), label)
+                for i, (bid, label) in enumerate(items)}
 
     def buttons(self):
         s, st, names = self.settings, self.engine.state, self.settings.player_names
         if st == ST.MENU:
-            return self._stack([("btn:start", t("start")), ("btn:instructions", t("instructions")),
-                                ("btn:settings", t("settings")), ("btn:exit", t("exit"))], 430, 235, 420, 76, 18)
+            return self._stack(
+                [("btn:start", t("start")),
+                 ("btn:instructions", t("instructions")),
+                 ("btn:settings", t("settings")),
+                 ("btn:exit", t("exit"))],
+                430, 235, 420, 76, 18)
         if st in (ST.INSTRUCTIONS, ST.SETUP):
             return {"btn:menu": (Rect(540, 630, 200, 60), t("back"))}
         if st == ST.PLAYING:
@@ -214,31 +208,34 @@ class Game:
 
             def name(i):
                 return f"P{i + 1} name: {names[i]}{cursor if self.editing == i else ''}"
-            items = [("btn:dwell", f"Dwell time: {s.dwell_time:.1f} s"),
-                     ("btn:mode", "Select by: " + ("Dwell" if s.selection_mode == "dwell" else "Pinch")),
-                     ("btn:zones", "Player zones: " + ("ON" if s.use_player_zones else "OFF")),
-                     ("btn:first", f"First player: {names[s.first_player]}"),
-                     ("btn:name0", name(0)), ("btn:name1", name(1)),
-                     ("btn:sound", "Sound: " + ("ON" if s.sound else "OFF")),
-                     ("btn:debug", "Debug landmarks: " + ("ON" if s.debug_landmarks else "OFF"))]
+
+            items = [
+                ("btn:dwell", f"Dwell time: {s.dwell_time:.1f} s"),
+                ("btn:mode", "Select by: " + ("Dwell" if s.selection_mode == "dwell" else "Pinch")),
+                ("btn:zones", "Player zones: " + ("ON" if s.use_player_zones else "OFF")),
+                ("btn:first", f"First player: {names[s.first_player]}"),
+                ("btn:name0", name(0)),
+                ("btn:name1", name(1)),
+                ("btn:sound", "Sound: " + ("ON" if s.sound else "OFF")),
+                ("btn:debug", "Debug landmarks: " + ("ON" if s.debug_landmarks else "OFF")),
+            ]
             out = {bid: (Rect(190 + (i % 2) * 480, 150 + (i // 2) * 100, 420, 80), label)
                    for i, (bid, label) in enumerate(items)}
             out["btn:menu"] = (Rect(440, 580, 400, 76), t("back"))
             return out
         return {}
 
-    # ---- what happens when something is selected ---------------------
     def activate(self, target, now):
         eng, s = self.engine, self.settings
         if target.startswith("cell:"):
             row, col = divmod(int(target.split(":")[1]), 3)
             outcome = eng.play(row, col)
-            if outcome == MoveOutcome.INVALID_CELL:              # FR-06: clear invalid-move message
+            if outcome == MoveOutcome.INVALID_CELL:
                 self.say(t("taken"), now)
                 self.audio.play("invalid")
             elif outcome in (MoveOutcome.PLACED, MoveOutcome.WIN, MoveOutcome.DRAW):
                 self.cell_times[(row, col)] = now
-                self.selector.reset(lock=True)                   # finger must leave before re-triggering
+                self.selector.reset(lock=True)
                 self.toast = None
                 if outcome == MoveOutcome.WIN:
                     self.result_time = now
@@ -247,10 +244,11 @@ class Game:
                     self.result_time = now
                     self.audio.play("draw")
                 else:
-                    self.audio.play("confirm")
+                    symbol = eng.board.get(row, col)
+                    self.audio.play("place_x" if symbol == "X" else "place_o")
             return
 
-        self.audio.play("confirm")                               # any button
+        self.audio.play("click")
 
         if target == "btn:start":
             if not self.mouse_mode and not self.camera_ok:
@@ -286,7 +284,11 @@ class Game:
             s.first_player = 1 - s.first_player
         elif target == "btn:sound":
             s.sound = not s.sound
-            self.audio.play("confirm")                           # silent if you just turned it off
+            if s.sound:
+                self.audio.start_music()
+                self.audio.play("click")
+            else:
+                self.audio.stop_music()
         elif target == "btn:debug":
             s.debug_landmarks = not s.debug_landmarks
         elif target in ("btn:name0", "btn:name1"):
@@ -295,7 +297,6 @@ class Game:
         if target != "btn:menu":
             self.selector.reset(lock=True)
 
-    # ---- one frame ----------------------------------------------------
     def update(self, now):
         eng = self.engine
         self.selector.dwell_time = self.settings.dwell_time
@@ -313,11 +314,12 @@ class Game:
             targets.update(self.mapper.all_rects())
 
         p = self.active_pointer
-        usable = p is not None and not p.ambiguous                   # ambiguous gesture = ignored
-        self.sel = self.selector.update((p.x, p.y) if usable else None, targets, now,
-                                        p.pinching if usable else False)
+        usable = p is not None and not p.ambiguous
+        self.sel = self.selector.update(
+            (p.x, p.y) if usable else None, targets, now,
+            p.pinching if usable else False)
         hover = self.sel.hover
-        if hover != self.last_hover:                              # soft tick when a free cell is targeted
+        if hover != self.last_hover:
             if hover and hover.startswith("cell:") and eng.state == ST.PLAYING:
                 row, col = divmod(int(hover.split(":")[1]), 3)
                 if eng.board.is_empty(row, col):
@@ -327,7 +329,6 @@ class Game:
             self.activate(self.sel.selected, now)
 
     def update_setup(self, now):
-        """SETUP: wait until the hand(s) are visible, then count down 3-2-1."""
         needed = 2 if self.settings.use_player_zones and not self.mouse_mode else 1
         owners = {p.owner for p in self.pointers if p.owner is not None}
         seen = len(owners) if needed == 2 else len(self.pointers)
@@ -351,8 +352,10 @@ class Game:
             r.camera_error(img, self.error_detail)
             return img
         if st == ST.MENU:
-            note = None if (self.camera_ok or self.mouse_mode) else "No camera detected - press Start to see options"
-            r.menu(img, note, "hint_pinch" if self.settings.selection_mode == "pinch" else "hint_dwell")
+            note = None if (self.camera_ok or self.mouse_mode) else \
+                "No camera detected - press Start to see options"
+            r.menu(img, note,
+                   "hint_pinch" if self.settings.selection_mode == "pinch" else "hint_dwell")
         elif st == ST.INSTRUCTIONS:
             r.instructions(img)
         elif st == ST.SETTINGS:
@@ -361,23 +364,23 @@ class Game:
             left = None if self.countdown_end is None else max(1, int(self.countdown_end - now) + 1)
             r.setup(img, self.setup_needed, self.setup_seen, left)
         else:
-            r.game(img, eng, self.mapper, self.sel, now, self.cell_times, self.result_time, self.toast)
+            r.game(img, eng, self.mapper, self.sel, now,
+                   self.cell_times, self.result_time, self.toast)
         r.buttons(img, self.buttons(), self.sel)
-        r.pointers(img, self.pointers, self.active_pointer, self.sel, self.settings.debug_landmarks)
+        r.pointers(img, self.pointers, self.active_pointer, self.sel,
+                   self.settings.debug_landmarks)
         return img
 
     def step(self, frame, pointers, now):
-        """Run one frame of the whole game and return the image to show."""
         self.pointers = pointers
         self.update(now)
         return self.draw(frame, now)
 
-    # ---- keyboard -----------------------------------------------------
     def on_key(self, key):
         if key == 255 or key < 0:
             return
         st = self.engine.state
-        if self.editing is not None:                                  # typing a player name
+        if self.editing is not None:
             names = self.settings.player_names
             if key in (13, 10):
                 if not names[self.editing].strip():
@@ -413,16 +416,12 @@ class Game:
             self.activate("btn:next", time.monotonic())
 
 
-# =====================================================================
-# Part 4: run()  (the real loop: camera -> hands -> Game -> window)
-# =====================================================================
 def parse_args():
     p = argparse.ArgumentParser(description="Gesture Tic-Tac-Toe")
     p.add_argument("--camera", type=int, default=cfg.CAMERA_INDEX, help="camera index (default 0)")
     p.add_argument("--mouse", action="store_true", help="use the mouse instead of a camera")
     p.add_argument("--debug", action="store_true", help="show hand landmarks and FPS")
     p.add_argument("--no-sound", action="store_true", help="turn sound effects off")
-    p.add_argument("--sound-test", action="store_true", help="play every sound once and show what is wrong")
     return p.parse_args()
 
 
@@ -430,16 +429,11 @@ def run(args):
     from .hand_tracker import Camera, HandTracker
 
     settings = cfg.Settings(debug_landmarks=args.debug, sound=not args.no_sound)
-    if args.sound_test:
-        from .audio_manager import sound_test
-        sound_test(settings)
-        return
     game = Game(settings, AudioManager(settings, enabled=not args.no_sound))
     game.mouse_mode = args.mouse
     camera, tracker, detector, mouse = None, None, GestureDetector(settings), MouseInput()
 
     def open_camera():
-        """FR-01: check the camera (and the hand model) before a game can start."""
         nonlocal camera, tracker
         game.error_detail = ""
         camera = Camera(args.camera)
@@ -473,7 +467,7 @@ def run(args):
                     game.goto(ST.MENU)
             if not game.mouse_mode and camera is not None and camera.is_open:
                 frame = camera.read()
-                if frame is None:                                     # FR-14: lost camera feed
+                if frame is None:
                     lost_since = lost_since or now
                     if now - lost_since > 2.0 and game.engine.state in (ST.SETUP, ST.PLAYING):
                         game.camera_ok = False
@@ -486,7 +480,7 @@ def run(args):
                 pointers = mouse.update()
             elif frame is not None and tracker is not None:
                 tracker.set_max_hands(2 if settings.use_player_zones else 1)
-                pointers = detector.update(tracker.process(frame))   # no hands -> []  (no crash)
+                pointers = detector.update(tracker.process(frame))
             else:
                 pointers = []
 
@@ -500,7 +494,7 @@ def run(args):
             game.on_key(cv2.waitKey(1) & 0xFF)
             if cv2.getWindowProperty(cfg.WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                 break
-    finally:                                                          # FR-14: safe exit
+    finally:
         if camera is not None:
             camera.release()
         if tracker is not None:
