@@ -1,9 +1,9 @@
 """Gesture detector (FR-04, FR-05, section 6): hand landmarks -> Point & Dwell selection.
 
-GestureDetector  - landmarks -> pointers (fingertip, pinch, pose, player zone)
+GestureDetector  - landmarks -> pointers (index fingertip is always the cursor)
 MouseInput       - mouse stand-in for a hand (testing / no camera)
 CellMapper       - pixel -> (row, col) on the 3x3 board
-SelectionManager - dwell (or pinch) confirmation with anti-jitter protection
+SelectionManager - dwell (or pinch) confirmation with smooth progress + anti-jitter
 """
 import math
 from dataclasses import dataclass
@@ -15,13 +15,13 @@ from .hand_tracker import MIDDLE_MCP, THUMB_TIP, INDEX_TIP, WRIST, Hand
 
 @dataclass
 class Pointer:
-    """Where a player is pointing, in window pixels."""
+    """Where a player is pointing, in window pixels (index fingertip)."""
     x: float
     y: float
     owner: Optional[int] = None      # 0 / 1 when player zones are on, else None
     pinching: bool = False
     pointing: bool = True
-    ambiguous: bool = False          # unclear gesture -> shown but ignored (FR-14)
+    ambiguous: bool = False          # unclear gesture -> shown but ignored
     hand: Optional[Hand] = None
 
 
@@ -34,11 +34,14 @@ def _extended(pts, tip, pip, factor):
 
 
 def is_pointing(pts) -> bool:
-    """Index finger straight, middle/ring/pinky curled."""
-    index_up = _extended(pts, 8, 6, 1.15)
-    others_curled = not any(_extended(pts, tip, pip, 1.05)
-                            for tip, pip in ((12, 10), (16, 14), (20, 18)))
-    return index_up and others_curled
+    """Index finger mostly straight. Other fingers do NOT need to be fully closed.
+
+    This is intentionally relaxed so menu buttons (Next Round, etc.) work with
+    a natural index point — you do not need an open palm or a strict fist.
+    """
+    # Index tip farther from wrist than the knuckle (finger is extended)
+    index_up = _extended(pts, 8, 6, 1.08)
+    return index_up
 
 
 def pinch_ratio(pts) -> float:
@@ -48,7 +51,7 @@ def pinch_ratio(pts) -> float:
 
 
 class PointSmoother:
-    """Exponential moving average to reduce hand jitter (risk table, section 21)."""
+    """Exponential moving average to reduce hand jitter."""
 
     def __init__(self, alpha=cfg.SMOOTHING_ALPHA):
         self.alpha, self.value = alpha, None
@@ -84,12 +87,12 @@ class GestureDetector:
             key = owner if zones else rank
             seen.add(key)
 
-            ratio = pinch_ratio(pts)                    # hysteresis stops flicker
+            ratio = pinch_ratio(pts)
             was = self._pinch.get(key, False)
             pinching = ratio < (cfg.PINCH_OFF if was else cfg.PINCH_ON)
             self._pinch[key] = pinching
 
-            # pinch mode: use the midpoint so closing the fingers doesn't move the cursor
+            # Always drive the cursor from the INDEX FINGERTIP (landmark 8)
             if pinch_mode:
                 raw = ((pts[THUMB_TIP][0] + pts[INDEX_TIP][0]) / 2,
                        (pts[THUMB_TIP][1] + pts[INDEX_TIP][1]) / 2)
@@ -98,18 +101,19 @@ class GestureDetector:
             x, y = self._smooth.setdefault(key, PointSmoother()).update(*raw)
 
             pointing = is_pointing(pts)
+            # Only mark ambiguous if config requires a pointing pose
             ambiguous = cfg.REQUIRE_POINTING_POSE and not pinch_mode and not pointing
             pointers.append(Pointer(min(max(x, 0), self.w - 1), min(max(y, 0), self.h - 1),
                                     owner, pinching, pointing, ambiguous, hand))
 
-        for store in (self._smooth, self._pinch):       # forget hands that left the frame
+        for store in (self._smooth, self._pinch):
             for key in [k for k in store if k not in seen]:
                 del store[key]
         return pointers
 
 
 class MouseInput:
-    """Mouse stand-in for a hand: hover = point, left button = pinch. For testing / no camera."""
+    """Mouse stand-in for a hand: hover = point, left button = pinch."""
 
     def __init__(self):
         self.pos, self.down = None, False
@@ -128,10 +132,6 @@ class MouseInput:
         return [Pointer(self.pos[0], self.pos[1], None, self.down)]
 
 
-# ======================================================================
-# Cell mapping and selection (Point & Dwell)
-# ======================================================================
-
 @dataclass(frozen=True)
 class Rect:
     x: int
@@ -139,37 +139,24 @@ class Rect:
     w: int
     h: int
 
-    def contains(self, px, py, pad=0) -> bool:
-        return (self.x - pad <= px < self.x + self.w + pad and
-                self.y - pad <= py < self.y + self.h + pad)
-
     @property
     def center(self):
         return (self.x + self.w // 2, self.y + self.h // 2)
 
-    def __iter__(self):                      # lets drawing code do: x, y, w, h = rect
-        return iter((self.x, self.y, self.w, self.h))
+    def contains(self, px, py, pad=0):
+        return (self.x - pad <= px <= self.x + self.w + pad and
+                self.y - pad <= py <= self.y + self.h + pad)
 
 
 class CellMapper:
-    """Divide a board rectangle into 3 columns x 3 rows (section 6)."""
-
-    def __init__(self, region: Rect):
-        self.region = region
-
-    def cell_at(self, x, y):
-        """(row, col) under the point, or None if outside the board region."""
-        r = self.region
-        if not r.contains(x, y):
-            return None
-        col = min(2, int((x - r.x) * 3 / r.w))
-        row = min(2, int((y - r.y) * 3 / r.h))
-        return row, col
+    def __init__(self, board_rect: Rect):
+        self.rect = board_rect
+        self.cell = board_rect.w // 3
 
     def cell_rect(self, row, col) -> Rect:
-        r = self.region
-        cw, ch = r.w // 3, r.h // 3
-        return Rect(r.x + col * cw, r.y + row * ch, cw, ch)
+        r = self.rect
+        c = self.cell
+        return Rect(r.x + col * c, r.y + row * c, c, c)
 
     def all_rects(self):
         return {f"cell:{row * 3 + col}": self.cell_rect(row, col)
@@ -178,19 +165,19 @@ class CellMapper:
 
 @dataclass
 class Selection:
-    hover: Optional[str] = None       # id of the target under the pointer
-    progress: float = 0.0             # 0..1 dwell progress
-    selected: Optional[str] = None    # set for exactly one frame when confirmed
+    hover: Optional[str] = None
+    progress: float = 0.0
+    selected: Optional[str] = None
 
 
 class SelectionManager:
-    """Turns a moving pointer into "select" events.
+    """Turns a moving index-finger pointer into select events.
 
-    Anti-accidental-selection features:
-      * dwell time: the pointer must stay on one target for dwell_time seconds
-      * hysteresis: moving to a neighbouring target needs a few pixels of overshoot
-      * lock: after a selection fires, the pointer must leave the target first
-      * grace period: a brief hand-detection loss pauses (not cancels) progress
+    Improvements vs basic dwell:
+      * sticky target + hysteresis so the ring does not reset from tiny shakes
+      * smoothed progress so the ring fills evenly
+      * longer lost-hand grace so brief tracking drops pause instead of cancel
+      * after a click, leave the target (or move a little) to unlock again
     """
 
     def __init__(self, dwell_time=1.0, mode="dwell",
@@ -200,8 +187,6 @@ class SelectionManager:
         self.reset()
 
     def reset(self, lock=False):
-        """Forget the current target. lock=True: ignore whatever the pointer is
-        on right now until it moves to something else."""
         self.hover = None
         self.start = 0.0
         self.locked = False
@@ -209,59 +194,88 @@ class SelectionManager:
         self._lost_since = None
         self._pinch_prev = False
         self._progress = 0.0
+        self._smooth_progress = 0.0
+        self._lock_point = None
 
     def _find(self, point, targets):
         x, y = point
         current = targets.get(self.hover)
+        # Stay on current target while inside it + hysteresis padding (anti-jitter)
         if current is not None and current.contains(x, y, pad=self.hysteresis):
-            return self.hover                                   # sticky
+            return self.hover
         for tid, rect in targets.items():
             if rect.contains(x, y):
                 return tid
         return None
 
     def update(self, point, targets, now, pinching=False) -> Selection:
-        # --- pointer missing: pause, then cancel after the grace period ------
+        # --- pointer missing: pause, then cancel after grace ----------------
         if point is None:
             if self._lost_since is None:
                 self._lost_since = now
             if now - self._lost_since > self.lost_grace:
                 self.reset()
                 return Selection()
-            return Selection(self.hover, self._progress, None)
-        if self._lost_since is not None:                        # came back in time
+            # Keep showing last progress while hand is briefly lost
+            return Selection(self.hover, self._smooth_progress, None)
+
+        if self._lost_since is not None:
+            # Shift start so elapsed dwell time is preserved
             self.start += now - self._lost_since
             self._lost_since = None
 
-        # --- which target is under the pointer? ------------------------------
         hover = self._find(point, targets)
+
+        # Unlock after a selection if the user moved away enough
+        if self.locked and self._lock_point is not None:
+            if _dist(point, self._lock_point) > 50:
+                self.locked = False
+                self._lock_point = None
+
         if hover != self.hover:
             self.hover, self.start, self.locked = hover, now, False
+            self._smooth_progress = 0.0
+            self._lock_point = None
+
         if self._pending_lock:
             self._pending_lock = False
             self.locked = hover is not None
+            if self.locked and point is not None:
+                self._lock_point = point
 
         if hover is None:
             self._progress = 0.0
+            self._smooth_progress = 0.0
             self._pinch_prev = pinching
             return Selection()
 
-        # --- Mode B: pinch confirms ------------------------------------------
+        # --- Mode B: pinch --------------------------------------------------
         if self.mode == "pinch":
             rising = pinching and not self._pinch_prev
             self._pinch_prev = pinching
             self._progress = 1.0 if pinching else 0.0
+            self._smooth_progress = self._progress
             if rising and not self.locked:
+                self.locked = True
+                self._lock_point = point
                 return Selection(hover, 1.0, hover)
-            return Selection(hover, self._progress, None)
+            return Selection(hover, self._smooth_progress, None)
 
-        # --- Mode A: dwell confirms ------------------------------------------
+        # --- Mode A: dwell (smooth ring) ------------------------------------
         if self.locked:
             self._progress = 0.0
+            self._smooth_progress = 0.0
             return Selection(hover, 0.0, None)
-        progress = min(1.0, (now - self.start) / max(self.dwell_time, 0.05))
-        self._progress = progress
-        if progress >= 1.0:
+
+        raw = min(1.0, (now - self.start) / max(self.dwell_time, 0.05))
+        self._progress = raw
+        # Smooth the visible ring so it does not jump
+        a = 0.35
+        self._smooth_progress = a * raw + (1 - a) * self._smooth_progress
+        # Catch up near the end so confirm is not delayed by smoothing
+        if raw >= 1.0:
+            self._smooth_progress = 1.0
             self.locked = True
+            self._lock_point = point
             return Selection(hover, 1.0, hover)
-        return Selection(hover, progress, None)
+        return Selection(hover, self._smooth_progress, None)

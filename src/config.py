@@ -23,13 +23,13 @@ BOARD_X = (WINDOW_W - BOARD_SIZE) // 2
 BOARD_Y = 150
 
 # ---- selection tuning ------------------------------------------------------
-DWELL_CHOICES = (0.8, 1.0, 1.2, 1.5)   # seconds, section 5 Mode A
-SELECT_HYSTERESIS_PX = 20              # must move this far past a border to change target
-LOST_GRACE_S = 0.35                    # hand may vanish this long without losing progress
-SMOOTHING_ALPHA = 0.45                 # 0..1, higher = more responsive, lower = smoother
-PINCH_ON = 0.30                        # thumb-index gap / hand size to start a pinch
-PINCH_OFF = 0.45                       # ... and to release it (hysteresis)
-REQUIRE_POINTING_POSE = False          # True = ignore hands that are not pointing
+DWELL_CHOICES = (0.6, 0.8, 1.0, 1.2, 1.5)  # seconds; lower = faster select
+SELECT_HYSTERESIS_PX = 28              # stickier cells/buttons (less ring reset from shake)
+LOST_GRACE_S = 0.55                    # brief tracking drop pauses progress, does not cancel
+SMOOTHING_ALPHA = 0.35                 # lower = smoother index cursor (less jitter)
+PINCH_ON = 0.30
+PINCH_OFF = 0.45
+REQUIRE_POINTING_POSE = False          # index tip always works; open palm not required
 
 # ---- game flow -------------------------------------------------------------
 SETUP_READY_S = 1.0          # hand(s) must be visible this long before the countdown
@@ -56,7 +56,7 @@ LANGUAGE = "en"
 LABELS = {
     "en": {
         "title": "GESTURE TIC-TAC-TOE",
-        "subtitle": "Computer Vision  -  2 Players  -  No touching",
+        "subtitle": "Computer Vision  ·  2 Players  ·  No touching",
         "start": "Start Game",
         "instructions": "Instructions",
         "settings": "Settings",
