@@ -1,10 +1,7 @@
-"""Match scoring across rounds (FR-10)."""
-
 
 class ScoreManager:
     def __init__(self):
         self.reset()
-
     def reset(self):
         self.wins = [0, 0]
         self.draws = 0

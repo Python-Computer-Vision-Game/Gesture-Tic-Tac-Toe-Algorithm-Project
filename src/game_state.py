@@ -1,10 +1,4 @@
-"""Main game loop and state management (section 12).
 
-Part 1  GameState / StateMachine - which screen we are on, and the allowed moves between them
-Part 2  GameEngine               - the rules of one match; knows nothing about cameras or hands
-Part 3  Game                     - screens, buttons, input handling (one frame at a time)
-Part 4  run()                    - the real loop: camera -> hands -> Game -> window
-"""
 import argparse
 import time
 from enum import Enum, auto

@@ -1,15 +1,10 @@
-"""Turn management (FR-02, FR-11). Player 1 is always X, Player 2 is always O."""
+
 from dataclasses import dataclass
-
 from .board import X, O
-
-
 @dataclass
 class Player:
     name: str
     symbol: str
-
-
 class TurnManager:
     def __init__(self, names=("Player 1", "Player 2"), first=0):
         self.players = [Player(names[0], X), Player(names[1], O)]

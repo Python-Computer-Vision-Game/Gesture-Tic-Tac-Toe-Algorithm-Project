@@ -1,20 +1,14 @@
-"""End-to-end test: drives the whole App with simulated fingertips (no camera needed)."""
+
 import unittest
-
 import numpy as np
-
 from src.game_state import Game, GameState as ST
 from src import config as cfg
 from src.hand_tracker import Camera
 from src.config import Settings
 from src.gesture_detector import Pointer
-
-
 def cell_center(index):
     row, col = divmod(index, 3)
     return cfg.BOARD_X + col * 160 + 80, cfg.BOARD_Y + row * 160 + 80
-
-
 class Driver:
     def __init__(self, settings=None):
         self.app = Game(settings or Settings())

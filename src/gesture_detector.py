@@ -1,10 +1,4 @@
-"""Gesture detector (FR-04, FR-05, section 6): hand landmarks -> Point & Dwell selection.
 
-GestureDetector  - landmarks -> pointers (index fingertip is always the cursor)
-MouseInput       - mouse stand-in for a hand (testing / no camera)
-CellMapper       - pixel -> (row, col) on the 3x3 board
-SelectionManager - dwell (or pinch) confirmation with smooth progress + anti-jitter
-"""
 import math
 from dataclasses import dataclass
 from typing import Optional
@@ -15,7 +9,6 @@ from .hand_tracker import MIDDLE_MCP, THUMB_TIP, INDEX_TIP, WRIST, Hand
 
 @dataclass
 class Pointer:
-    """Where a player is pointing, in window pixels (index fingertip)."""
     x: float
     y: float
     owner: Optional[int] = None      # 0 / 1 when player zones are on, else None
@@ -34,25 +27,15 @@ def _extended(pts, tip, pip, factor):
 
 
 def is_pointing(pts) -> bool:
-    """Index finger mostly straight. Other fingers do NOT need to be fully closed.
-
-    This is intentionally relaxed so menu buttons (Next Round, etc.) work with
-    a natural index point — you do not need an open palm or a strict fist.
-    """
     # Index tip farther from wrist than the knuckle (finger is extended)
     index_up = _extended(pts, 8, 6, 1.08)
     return index_up
 
 
 def pinch_ratio(pts) -> float:
-    """Thumb-tip to index-tip gap, relative to hand size (wrist to middle knuckle)."""
     size = _dist(pts[WRIST], pts[MIDDLE_MCP]) or 1e-6
     return _dist(pts[THUMB_TIP], pts[INDEX_TIP]) / size
-
-
 class PointSmoother:
-    """Exponential moving average to reduce hand jitter."""
-
     def __init__(self, alpha=cfg.SMOOTHING_ALPHA):
         self.alpha, self.value = alpha, None
 
@@ -113,7 +96,6 @@ class GestureDetector:
 
 
 class MouseInput:
-    """Mouse stand-in for a hand: hover = point, left button = pinch."""
 
     def __init__(self):
         self.pos, self.down = None, False
@@ -171,15 +153,6 @@ class Selection:
 
 
 class SelectionManager:
-    """Turns a moving index-finger pointer into select events.
-
-    Improvements vs basic dwell:
-      * sticky target + hysteresis so the ring does not reset from tiny shakes
-      * smoothed progress so the ring fills evenly
-      * longer lost-hand grace so brief tracking drops pause instead of cancel
-      * after a click, leave the target (or move a little) to unlock again
-    """
-
     def __init__(self, dwell_time=1.0, mode="dwell",
                  hysteresis=cfg.SELECT_HYSTERESIS_PX, lost_grace=cfg.LOST_GRACE_S):
         self.dwell_time, self.mode = dwell_time, mode

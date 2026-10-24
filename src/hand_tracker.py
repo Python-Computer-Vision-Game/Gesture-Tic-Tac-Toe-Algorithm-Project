@@ -1,12 +1,4 @@
-"""Camera capture + MediaPipe hand tracking (FR-03, FR-04).
 
-Camera       - reads the webcam on a background thread (always the newest frame)
-HandTracker  - MediaPipe hand landmarks -> list of Hand objects
-
-MediaPipe 1.x removed the old `mp.solutions.hands` API, so HandTracker uses the
-Tasks API (HandLandmarker) first and falls back to the legacy API only if the
-Tasks API is unavailable (older MediaPipe 0.10.x installs).
-"""
 import sys
 import threading
 import time
@@ -32,9 +24,6 @@ WRIST, THUMB_TIP, INDEX_PIP, INDEX_TIP, MIDDLE_MCP = 0, 4, 6, 8, 9
 
 # =============================================================== camera
 class Camera:
-    """Webcam reader. A background thread keeps grabbing frames so the game loop
-    never waits on the camera and always gets the newest picture (lower latency)."""
-
     def __init__(self, index=cfg.CAMERA_INDEX, width=cfg.CAMERA_W, height=cfg.CAMERA_H,
                  mirror=cfg.MIRROR_CAMERA):
         self.index, self.width, self.height, self.mirror = index, width, height, mirror
@@ -113,11 +102,8 @@ class Camera:
 # =============================================================== hand tracking
 @dataclass
 class Hand:
-    landmarks: list          # 21 (x, y) pairs, normalised 0..1 in the (mirrored) frame
-
-
+    landmarks: list          
 def ensure_model():
-    """Download the hand model once (about 7 MB) if it is not already on disk."""
     if MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 1_000_000:
         return MODEL_PATH
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -172,14 +158,13 @@ class HandTracker:
             return False
 
     def set_max_hands(self, n):
-        """1 hand is faster; 2 hands are only needed when player zones are on."""
         if n != self.max_hands:
             self.close()
             self.max_hands = n
             self._build()
 
     def process(self, frame_bgr):
-        """Return a list of Hand (possibly empty). Never raises on a bad frame."""
+    
         if frame_bgr is None:
             return []
         try:

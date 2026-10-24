@@ -1,4 +1,4 @@
-"""3x3 board + win/draw detection (FR-07, FR-08, FR-09, section 8)."""
+
 EMPTY, X, O = "", "X", "O"
 
 # The 8 winning lines as (row, col) cells: 3 rows, 3 columns, 2 diagonals.
@@ -36,7 +36,6 @@ class Board:
         return self.in_bounds(row, col) and self.grid[row][col] == EMPTY
 
     def place(self, row, col, symbol) -> bool:
-        """Put a symbol on an empty cell. Never overwrites (FR-07, FR-14)."""
         if symbol not in (X, O) or not self.is_empty(row, col):
             return False
         self.grid[row][col] = symbol
@@ -46,7 +45,6 @@ class Board:
         return all(cell != EMPTY for row in self.grid for cell in row)
 
     def find_winner(self):
-        """Return (symbol, line) for the first complete line, else (None, None)."""
         for line in WIN_LINES:
             a, b, c = (self.grid[r][col] for r, col in line)
             if a != EMPTY and a == b == c:

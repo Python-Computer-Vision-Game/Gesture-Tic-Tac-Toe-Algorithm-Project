@@ -1,13 +1,10 @@
-﻿"""Audio manager — loads WAV files from assets/sounds/"""
+﻿
 from __future__ import annotations
-
 import sys
 from pathlib import Path
-
 from . import config as cfg
 
 SOUND_DIR = cfg.ROOT_DIR / "assets" / "sounds"
-
 FILES = {
     "target": "click.wav",
     "click": "click.wav",
