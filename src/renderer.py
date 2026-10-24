@@ -221,7 +221,7 @@ class Renderer:
             glow = 14 if hovered else 8
             thick = 3 if hovered else 2
 
-            draw_glow_rounded_rect(img, tuple(rect), 16, color, thickness=thick, glow_r=glow)
+            draw_glow_rounded_rect(img, (rect.x, rect.y, rect.w, rect.h), 16, color, thickness=thick, glow_r=glow)
 
             if hovered and sel is not None and sel.progress > 0:
                 fill_w = max(2, int(rect.w * sel.progress))
