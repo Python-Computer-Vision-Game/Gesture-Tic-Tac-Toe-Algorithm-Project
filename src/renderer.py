@@ -1,8 +1,4 @@
-"""Renderer (FR-07, section 13, section 14): Neon Arcade visual interface.
 
-Matches the neon cyan / pink look: dark brick background, glowing board,
-neon X (pink) and O (cyan), soft glows on hover and win.
-"""
 import math
 
 import cv2
