@@ -1,6 +1,5 @@
-
+﻿
 import math
-
 import cv2
 import numpy as np
 
@@ -57,8 +56,6 @@ def _get_brick_bg():
 
     _BRICK_TEXTURE = canvas
     return _BRICK_TEXTURE.copy()
-
-
 # ---- Text engine -----------------------------------------------------------
 _TEXT_CACHE = {}
 
@@ -303,7 +300,7 @@ class Renderer:
             # tip text
             text(img, line, (card_x + 75, y + card_h // 2), 0.62, WHITE, 1, "left")
 
-        # Back button is drawn by buttons() – style it via game_state label "Back"
+        # Back button is drawn by buttons() â€“ style it via game_state label "Back"
 
     def settings_screen(self, img, editing):
         text(img, "SETTINGS", (W // 2, 80), 1.6, WHITE, 3)
@@ -390,7 +387,7 @@ class Renderer:
             _draw_heart(img, 1000 + i * 45, 380, 22, NEON_PINK)
 
         # Board frame
-        rg = mapper.region
+        rg = Rect(mapper.cell_rect(0,0).x, mapper.cell_rect(0,0).y, mapper.cell_rect(2,2).x + mapper.cell_rect(2,2).w - mapper.cell_rect(0,0).x, mapper.cell_rect(2,2).y + mapper.cell_rect(2,2).h - mapper.cell_rect(0,0).y)
         draw_glow_rounded_rect(
             img, (rg.x - 12, rg.y - 12, rg.w + 24, rg.h + 24),
             radius=28, color=NEON_CYAN, thickness=4, glow_r=22,
@@ -447,3 +444,4 @@ class Renderer:
             g = min(1.0, (now - result_time) / 0.40)
             end = (int(a[0] + (b[0] - a[0]) * g), int(a[1] + (b[1] - a[1]) * g))
             draw_glow_line(img, a, end, NEON_PINK, thickness=8, glow_r=22)
+
